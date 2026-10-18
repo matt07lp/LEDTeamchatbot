@@ -14,3 +14,9 @@ langchain-ollama         # Ollama (local)
 # llama-index-tools-mcp
 # llama-index-llms-google-genai
 # llama-index-llms-ollama
+
+# WhatsApp webhook + tests
+fastapi
+uvicorn
+httpx
+pytest
