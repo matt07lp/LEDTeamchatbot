@@ -1,0 +1,16 @@
+# Servidor MCP + Excel
+mcp
+openpyxl
+ 
+# Agente (LangChain) + variables de entorno
+python-dotenv
+langchain
+langchain-mcp-adapters
+langchain-google-genai   # Gemini
+langchain-ollama         # Ollama (local)
+ 
+# Solo si usas FRAMEWORK = "llamaindex"
+# llama-index
+# llama-index-tools-mcp
+# llama-index-llms-google-genai
+# llama-index-llms-ollama
