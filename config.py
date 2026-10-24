@@ -48,16 +48,16 @@ def _proveedor_invalido():
     raise ValueError(f"LLM_PROVIDER='{PROVEEDOR}' no valido. Usa 'google' u 'ollama'.")
 
 
-def llm_langchain():
-    """Modelo de chat para LangChain."""
+def llm_langchain(modelo: str | None = None):
+    """Modelo de chat para LangChain. `modelo` permite usar otro modelo (ej. el analista)."""
     kwargs = {"temperature": TEMPERATURA} if TEMPERATURA is not None else {}
     if PROVEEDOR == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
-            model=GOOGLE_MODEL, google_api_key=_verificar_google(), **kwargs)
+            model=modelo or GOOGLE_MODEL, google_api_key=_verificar_google(), **kwargs)
     if PROVEEDOR == "ollama":
         from langchain_ollama import ChatOllama
-        return ChatOllama(model=OLLAMA_MODEL, base_url=OLLAMA_URL,
+        return ChatOllama(model=modelo or OLLAMA_MODEL, base_url=OLLAMA_URL,
                           **({"temperature": TEMPERATURA if TEMPERATURA is not None else 0}))
     _proveedor_invalido()
 

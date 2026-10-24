@@ -19,6 +19,8 @@ Environment variables (.env):
   WHATSAPP_ALLOWED_NUMBERS  optional comma-separated allowlist (pilot phase)
   MAX_HISTORY               max messages kept per customer (default 60)
   CONVERSATIONS_FILE        optional path to persist histories (experimental; off by default)
+  SALES_ALERT_NUMBER        WhatsApp number of the sales rep who receives HOT lead alerts
+  ANALYST_MODEL             optional different model for the Lead Analyst (agent 2)
 """
 import asyncio
 import hashlib
@@ -43,6 +45,8 @@ except ImportError:
     pass
 
 from trazas import _texto  # extracts plain text from a model message
+from lead_analyst import (analizar_lead, construir_transcripcion, extraer_lead_id,
+                          formato_alerta, hubo_evento_accionable, marcar_notificado)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("whatsapp")
@@ -248,6 +252,7 @@ async def procesar_mensaje(msg: dict) -> None:
         await enviar_texto(usuario, MSG_NO_TEXTO)
         return
 
+    lead_id, evento, mensajes = None, False, []
     async with _lock_de(usuario):  # one message at a time per customer
         try:
             agente = await _obtener_agente()
@@ -257,10 +262,37 @@ async def procesar_mensaje(msg: dict) -> None:
             mensajes = r["messages"]
             store.set(usuario, _recortar(mensajes))
             respuesta = _texto(mensajes[-1].content).strip() or MSG_VACIO
+            # messages created in THIS turn: did a quotation/appointment just happen?
+            evento = hubo_evento_accionable(mensajes[len(historial) + 1:])
+            lead_id = extraer_lead_id(mensajes)
         except Exception:
             logger.exception("Agent failed for %s", usuario)
             respuesta = MSG_ERROR
-    await enviar_texto(usuario, respuesta)
+    await enviar_texto(usuario, respuesta)  # the customer is answered FIRST
+
+    # Agent 2 (sequential step): analyze the lead after the customer has been served
+    if evento and lead_id:
+        await _analizar_y_alertar(lead_id, mensajes)
+
+
+async def notificar_equipo(res: dict) -> bool:
+    numero = os.getenv("SALES_ALERT_NUMBER", "").strip()
+    if not numero:
+        logger.warning("HOT lead %s but SALES_ALERT_NUMBER is not set", res["lead_id"])
+        return False
+    await enviar_texto(numero, formato_alerta(res))
+    return True
+
+
+async def _analizar_y_alertar(lead_id: str, mensajes: list) -> None:
+    """Never lets an analyst failure affect the customer conversation."""
+    try:
+        res = await analizar_lead(lead_id, construir_transcripcion(mensajes))
+        logger.info("Lead %s scored %s (%s)", lead_id, res["score"], res["priority"])
+        if res["should_notify"] and await notificar_equipo(res):
+            await asyncio.to_thread(marcar_notificado, lead_id)
+    except Exception:
+        logger.exception("Lead analysis failed for %s", lead_id)
 
 
 # ---------------------------------------------------------------------------
