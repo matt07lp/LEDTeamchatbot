@@ -6,6 +6,7 @@ data/
 leads.xlsx
 pricing.xlsx
 lead_scores.xlsx
+scoring_rules.xlsx
  
 # Python
 __pycache__/
