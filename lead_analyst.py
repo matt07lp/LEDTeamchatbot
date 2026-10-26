@@ -353,6 +353,30 @@ def marcar_notificado(lead_id: str) -> None:
         wb.save(ruta)
 
 
+def leer_resultado(lead_id: str) -> dict | None:
+    """Saved analysis of one lead (what the web demo shows), or None."""
+    ruta = _rutas()[1]
+    if not ruta.exists() or ruta.stat().st_size == 0:
+        return None
+    try:
+        wb = _cargar(ruta, data_only=True)
+        if "LeadScores" not in wb.sheetnames:
+            return None
+        fila = next((f for f in _filas(wb["LeadScores"]) if f.get("lead_id") == lead_id), None)
+    except Exception:
+        logger.exception("Could not read lead_scores.xlsx")
+        return None
+    if not fila:
+        return None
+    try:
+        fila["breakdown"] = json.loads(fila.pop("breakdown_json", None) or "{}")
+    except ValueError:
+        fila["breakdown"] = {}
+    fila["reasons"] = [r for r in str(fila.get("reasons") or "").split(" | ") if r]
+    fila["llm_ok"] = fila.get("llm_ok") == "yes"
+    return fila
+
+
 # ---------------------------------------------------------------------------
 # MAIN ENTRY POINT
 # ---------------------------------------------------------------------------

@@ -241,6 +241,30 @@ async def enviar_texto(destino: str, texto: str) -> None:
 # ---------------------------------------------------------------------------
 # MESSAGE PROCESSING (runs in the background after we answered 200 to Meta)
 # ---------------------------------------------------------------------------
+async def ejecutar_turno(usuario: str, texto: str) -> dict:
+    """Run ONE agent turn for one customer. Shared by WhatsApp and the web demo.
+    Returns: respuesta (text for the customer), evento (a quotation/appointment was just
+    created), lead_id, mensajes (full history) and nuevos (messages created this turn)."""
+    lead_id, evento, mensajes, nuevos = None, False, [], []
+    async with _lock_de(usuario):  # one message at a time per customer
+        try:
+            agente = await _obtener_agente()
+            historial = store.get(usuario)
+            r = await agente.ainvoke(
+                {"messages": historial + [{"role": "user", "content": texto}]})
+            mensajes = r["messages"]
+            store.set(usuario, _recortar(mensajes))
+            respuesta = _texto(mensajes[-1].content).strip() or MSG_VACIO
+            nuevos = mensajes[len(historial) + 1:]   # messages created in THIS turn
+            evento = hubo_evento_accionable(nuevos)
+            lead_id = extraer_lead_id(mensajes)
+        except Exception:
+            logger.exception("Agent failed for %s", usuario)
+            respuesta = MSG_ERROR
+    return {"respuesta": respuesta, "evento": evento, "lead_id": lead_id,
+            "mensajes": mensajes, "nuevos": nuevos}
+
+
 async def procesar_mensaje(msg: dict) -> None:
     if not msg["id"] or _ya_visto(msg["id"]):
         return
@@ -252,27 +276,12 @@ async def procesar_mensaje(msg: dict) -> None:
         await enviar_texto(usuario, MSG_NO_TEXTO)
         return
 
-    lead_id, evento, mensajes = None, False, []
-    async with _lock_de(usuario):  # one message at a time per customer
-        try:
-            agente = await _obtener_agente()
-            historial = store.get(usuario)
-            r = await agente.ainvoke(
-                {"messages": historial + [{"role": "user", "content": msg["text"]}]})
-            mensajes = r["messages"]
-            store.set(usuario, _recortar(mensajes))
-            respuesta = _texto(mensajes[-1].content).strip() or MSG_VACIO
-            # messages created in THIS turn: did a quotation/appointment just happen?
-            evento = hubo_evento_accionable(mensajes[len(historial) + 1:])
-            lead_id = extraer_lead_id(mensajes)
-        except Exception:
-            logger.exception("Agent failed for %s", usuario)
-            respuesta = MSG_ERROR
-    await enviar_texto(usuario, respuesta)  # the customer is answered FIRST
+    turno = await ejecutar_turno(usuario, msg["text"])
+    await enviar_texto(usuario, turno["respuesta"])  # the customer is answered FIRST
 
     # Agent 2 (sequential step): analyze the lead after the customer has been served
-    if evento and lead_id:
-        await _analizar_y_alertar(lead_id, mensajes)
+    if turno["evento"] and turno["lead_id"]:
+        await _analizar_y_alertar(turno["lead_id"], turno["mensajes"])
 
 
 async def notificar_equipo(res: dict) -> bool:

@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LED Screens - Virtual assistant demo</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #E8ECF2;
+    --surface: #FFFFFF;
+    --ink: #1B2333;
+    --muted: #5A6478;
+    --line: #D3D9E4;
+    --me: #22407A;
+    --me-ink: #FFFFFF;
+    --led-off: #D5DBE6;
+    --hot: #D63C42;
+    --hot-ink: #FFFFFF;
+    --warm: #F2B134;
+    --warm-ink: #3A2A00;
+    --cold: #3E63DD;
+    --cold-ink: #FFFFFF;
+    --warn: #B4540A;
+    --ok: #2F7D4F;
+    --focus: #22407A;
+    --hot-led: #FF4D52;
+    --warm-led: #FFB938;
+    --cold-led: #5C85FF;
+    --font: "Avenir Next", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141B2B;
+      --surface: #1D2639;
+      --ink: #E7ECF6;
+      --muted: #9AA5BC;
+      --line: #313C55;
+      --me: #3D63C4;
+      --me-ink: #FFFFFF;
+      --led-off: #2A3550;
+      --warn: #F0A15C;
+      --ok: #5FC28A;
+      --focus: #9DB7F5;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: var(--font);
+    font-size: 16px;
+    line-height: 1.5;
+    color: var(--ink);
+    background: var(--bg);
+  }
+  h1, h2, p { margin: 0; }
+  button, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+  .app {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 400px;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+  }
+
+  /* ---------- header ---------- */
+  .top {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .rgb { display: inline-grid; grid-template-columns: repeat(3, 10px); gap: 4px; }
+  .rgb i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+  .rgb i:nth-child(1) { background: var(--hot); }
+  .rgb i:nth-child(2) { background: var(--ok); }
+  .rgb i:nth-child(3) { background: var(--cold); }
+  .brand h1 { font-size: 18px; font-weight: 700; line-height: 1.2; }
+  .brand p { font-size: 13px; color: var(--muted); line-height: 1.2; }
+  .top-actions { display: flex; align-items: center; gap: 10px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; background: transparent; padding: 6px 12px; cursor: pointer; font-size: 14px; color: var(--muted); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+  .ghost { border: 1px solid var(--line); background: transparent; border-radius: 8px; padding: 6px 14px; cursor: pointer; font-size: 14px; }
+  .ghost:hover { background: var(--bg); }
+
+  .tabs { display: none; }
+
+  /* ---------- chat ---------- */
+  .chat { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+  .log { flex: 1; overflow-y: auto; padding: 24px 20px 12px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: min(560px, 82%); padding: 10px 14px; border-radius: 14px; overflow-wrap: anywhere; }
+  .msg p + p { margin-top: 8px; }
+  .msg ul { margin: 6px 0 0; padding-left: 20px; }
+  .msg.user { align-self: flex-end; background: var(--me); color: var(--me-ink); border-bottom-right-radius: 4px; }
+  .msg.bot { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+  .msg.err { align-self: center; max-width: 90%; background: transparent; border: 1px solid var(--warn); color: var(--warn); font-size: 14px; }
+  .typing { display: inline-flex; gap: 5px; align-items: center; padding: 14px 16px; }
+  .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: blink 1.1s ease-in-out infinite; }
+  .typing i:nth-child(2) { animation-delay: .18s; }
+  .typing i:nth-child(3) { animation-delay: .36s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+
+  .empty { margin: auto; max-width: 460px; text-align: center; padding: 0 8px; }
+  .empty h2 { font-size: 26px; line-height: 1.2; font-weight: 700; }
+  .empty p { margin-top: 8px; color: var(--muted); }
+  .chips { margin-top: 20px; display: flex; flex-direction: column; gap: 8px; }
+  .chip { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 10px 14px; cursor: pointer; text-align: left; }
+  .chip:hover { border-color: var(--me); }
+
+  .composer { display: flex; align-items: flex-end; gap: 10px; padding: 12px 20px 18px; }
+  .composer textarea {
+    flex: 1; resize: none; max-height: 140px; padding: 11px 14px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--surface); line-height: 1.4;
+  }
+  .send { border: 0; background: var(--me); color: var(--me-ink); border-radius: 12px; padding: 11px 20px; cursor: pointer; font-weight: 600; }
+  .send:disabled { opacity: .5; cursor: default; }
+
+  /* ---------- sales panel ---------- */
+  .sales { border-left: 1px solid var(--line); background: var(--bg); overflow-y: auto; min-height: 0; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .sales-title { font-size: 13px; color: var(--muted); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .card h2 { font-size: 16px; font-weight: 700; }
+  .card .sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  .matrix-wrap { margin: 16px 0 12px; padding: 18px 16px; border-radius: 10px; background: #172036; box-shadow: inset 0 0 0 1px #2B3652; }
+  .matrix { display: block; width: 100%; height: auto; --led-off: #2B3652; --led-idle: #8A96AD; --led: var(--led-idle); }
+  .dot { fill: var(--led-off); transition: fill .3s ease; }
+  .dot.on { fill: var(--led); }
+  .matrix.lit .dot.on { filter: drop-shadow(0 0 2.5px var(--led)); }
+  .matrix.scan .dot { animation: scan 1.4s ease-in-out infinite; animation-delay: calc(var(--c) * 45ms); }
+  @keyframes scan { 0%, 100% { fill: var(--led-off); } 40% { fill: var(--led-idle); } }
+
+  .badge { display: inline-block; padding: 3px 12px; border-radius: 999px; font-weight: 700; font-size: 14px; }
+  .badge.HOT { background: var(--hot); color: var(--hot-ink); }
+  .badge.WARM { background: var(--warm); color: var(--warm-ink); }
+  .badge.COLD { background: var(--cold); color: var(--cold-ink); }
+  .score-line { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .score-line span { color: var(--muted); font-size: 14px; }
+  .note { color: var(--muted); font-size: 14px; }
+  .note.warn { color: var(--warn); }
+  .tag { display: inline-block; margin-top: 8px; font-size: 13px; color: var(--ok); }
+  .block { margin-top: 14px; }
+  .block h3 { margin: 0 0 4px; font-size: 14px; font-weight: 700; }
+  .block ul { margin: 0; padding-left: 18px; font-size: 14px; }
+  .next { padding: 10px 12px; border-radius: 8px; background: var(--bg); font-size: 14px; }
+  details summary { cursor: pointer; font-size: 14px; color: var(--muted); }
+  .bars { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 6px; }
+  .bars li { display: grid; grid-template-columns: 1fr 70px 34px; align-items: center; gap: 8px; font-size: 13px; }
+  .bars .track { height: 6px; border-radius: 3px; background: var(--led-off); overflow: hidden; }
+  .bars .fill { display: block; height: 100%; background: var(--me); }
+  .bars b { text-align: right; font-weight: 600; }
+
+  .timeline { list-style: none; margin: 12px 0 0; padding: 0; }
+  .timeline li { position: relative; padding: 0 0 14px 24px; }
+  .timeline li::before { content: ""; position: absolute; left: 5px; top: 16px; bottom: 0; width: 2px; background: var(--line); }
+  .timeline li:last-child::before { display: none; }
+  .timeline .mark { position: absolute; left: 0; top: 5px; width: 12px; height: 12px; border-radius: 50%; background: var(--ok); }
+  .timeline .mark.warn { background: var(--warn); }
+  .st-title { font-weight: 600; font-size: 15px; }
+  .st-detail { font-size: 14px; color: var(--muted); }
+  .st-detail.warn { color: var(--warn); }
+  .timeline pre { margin: 6px 0 0; padding: 8px; border-radius: 6px; background: var(--bg); font-size: 12px; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* ---------- small screens ---------- */
+  @media (max-width: 900px) {
+    .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
+    .tabs { display: flex; grid-column: 1; background: var(--surface); border-bottom: 1px solid var(--line); }
+    .tabs button { flex: 1; border: 0; background: transparent; padding: 10px; cursor: pointer; border-bottom: 3px solid transparent; color: var(--muted); }
+    .tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--me); font-weight: 600; }
+    .app[data-view="chat"] .sales { display: none; }
+    .app[data-view="sales"] .chat { display: none; }
+    .sales { border-left: 0; }
+    .top { padding: 10px 14px; }
+  }
+  @media (max-width: 560px) {
+    .brand p { display: none; }
+    .brand h1 { font-size: 16px; white-space: nowrap; }
+    .top { gap: 8px; }
+    .top-actions { gap: 6px; flex-shrink: 0; }
+    .seg button { padding: 6px 9px; }
+    .ghost { padding: 6px 10px; font-size: 13px; white-space: nowrap; }
+    .msg { max-width: 90%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .typing i { animation: none; opacity: .6; }
+    .matrix.scan .dot { animation: none; }
+    .dot { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app" data-view="chat">
+  <header class="top">
+    <div class="brand">
+      <span class="rgb" aria-hidden="true"><i></i><i></i><i></i></span>
+      <div>
+        <h1 data-i18n="brandTitle"></h1>
+        <p data-i18n="brandSub"></p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <div class="seg" role="group" aria-label="Language">
+        <button type="button" data-lang="es" aria-pressed="true">ES</button>
+        <button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+      <button type="button" class="ghost" id="newChat" data-i18n="newChat"></button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button type="button" role="tab" data-view="chat" aria-selected="true" data-i18n="tabChat"></button>
+    <button type="button" role="tab" data-view="sales" aria-selected="false" data-i18n="tabSales"></button>
+  </nav>
+
+  <section class="chat" aria-label="Chat">
+    <div class="log" id="log" role="log" aria-live="polite"></div>
+    <form class="composer" id="composer" autocomplete="off">
+      <textarea id="input" rows="1" maxlength="2000" data-i18n-ph="placeholder" data-i18n-aria="placeholder"></textarea>
+      <button type="submit" class="send" id="sendBtn" data-i18n="send"></button>
+    </form>
+  </section>
+
+  <aside class="sales" aria-label="Sales team view">
+    <p class="sales-title" data-i18n="salesTitle"></p>
+
+    <section class="card" aria-labelledby="scoreH">
+      <h2 id="scoreH" data-i18n="scoreTitle"></h2>
+      <p class="sub" data-i18n="scoreSub"></p>
+      <div class="matrix-wrap"><svg id="matrix" class="matrix" viewBox="0 0 204 84" role="img"></svg></div>
+      <div id="scoreBody"></div>
+    </section>
+
+    <section class="card" aria-labelledby="actH">
+      <h2 id="actH" data-i18n="activityTitle"></h2>
+      <div id="steps"></div>
+    </section>
+  </aside>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ---------------- texts ---------------- */
+  const T = {
+    es: {
+      brandTitle: "LED Screens", brandSub: "Asistente virtual", newChat: "Nuevo chat",
+      tabChat: "Chat", tabSales: "Vista de ventas",
+      emptyTitle: "¿En qué te ayudamos?",
+      emptyText: "Pregunta por la compra o renta de pantallas LED, o agenda una visita al showroom.",
+      chips: ["Quiero rentar una pantalla para un evento", "Quiero comprar una pantalla para interiores", "¿Puedo visitar el showroom?"],
+      placeholder: "Escribe tu mensaje", send: "Enviar", typing: "El asistente está escribiendo",
+      netError: "No se pudo conectar con el servidor. Verifica que esté corriendo e inténtalo de nuevo.",
+      salesTitle: "Vista del equipo de ventas",
+      scoreTitle: "Puntaje del lead", scoreSub: "Un segundo agente califica al lead después de una cotización o una visita.",
+      scoreNone: "Aún no hay puntaje. Aparece cuando se crea una cotización o se agenda una visita.",
+      scorePending: "Analizando la conversación…",
+      scoreFailed: "El análisis no terminó. Revisa el log del servidor.",
+      HOT: "Lead caliente", WARM: "Lead tibio", COLD: "Lead frío", outOf: "de 100",
+      why: "Por qué", nextStep: "Siguiente paso sugerido", howBuilt: "Cómo se calculó el puntaje",
+      alerted: "Equipo de ventas avisado", partial: "Calculado solo con datos registrados",
+      activityTitle: "Actividad del asistente",
+      activityEmpty: "Las acciones del asistente aparecen aquí.",
+      details: "Detalles", needsInfo: "Requiere atención", clarify: "Pidió aclarar la intención",
+      stEval: "Entendió la solicitud", stCall: "Agendó una llamada", stVisit: "Agendó una visita al showroom",
+      stBuyQuote: "Preparó una cotización de compra", stRent: "Preparó una cotización de renta", stPurchase: "Gestionó una compra",
+      intents: { buy: "Compra", rent: "Renta", other: "No soportado" },
+      factors: { urgency: "Urgencia", decision_maker: "Poder de decisión", requirements_clarity: "Requisitos claros",
+                 budget_signal: "Señal de presupuesto", action: "Paso dado", company: "Empresa indicada", deal_size: "Tamaño del trato" }
+    },
+    en: {
+      brandTitle: "LED Screens", brandSub: "Virtual assistant", newChat: "New chat",
+      tabChat: "Chat", tabSales: "Sales view",
+      emptyTitle: "How can we help?",
+      emptyText: "Ask about buying or renting LED screens, or book a showroom visit.",
+      chips: ["I want to rent a screen for an event", "I want to buy an indoor screen", "Can I visit the showroom?"],
+      placeholder: "Type your message", send: "Send", typing: "The assistant is typing",
+      netError: "Couldn't reach the server. Check that it is running and try again.",
+      salesTitle: "Sales team view",
+      scoreTitle: "Lead score", scoreSub: "A second agent scores the lead after a quotation or a visit.",
+      scoreNone: "No score yet. It appears once a quotation is created or a visit is booked.",
+      scorePending: "Analyzing the conversation…",
+      scoreFailed: "The analysis didn't finish. Check the server log.",
+      HOT: "Hot lead", WARM: "Warm lead", COLD: "Cold lead", outOf: "out of 100",
+      why: "Why", nextStep: "Suggested next step", howBuilt: "How the score was built",
+      alerted: "Sales team alerted", partial: "Scored from recorded data only",
+      activityTitle: "Assistant activity",
+      activityEmpty: "Actions the assistant takes appear here.",
+      details: "Details", needsInfo: "Needs attention", clarify: "Asked to clarify the intent",
+      stEval: "Understood the request", stCall: "Scheduled a call", stVisit: "Booked a showroom visit",
+      stBuyQuote: "Prepared a purchase quotation", stRent: "Prepared a rental quotation", stPurchase: "Handled a purchase",
+      intents: { buy: "Buying", rent: "Renting", other: "Not supported" },
+      factors: { urgency: "Urgency", decision_maker: "Decision power", requirements_clarity: "Clear requirements",
+                 budget_signal: "Budget signal", action: "Step taken", company: "Company provided", deal_size: "Deal size" }
+    }
+  };
+
+  /* 5x7 dot-matrix glyphs for the LED score display */
+  const FONT = {
+    "0": ["01110","10001","10011","10101","11001","10001","01110"],
+    "1": ["00100","01100","00100","00100","00100","00100","01110"],
+    "2": ["01110","10001","00001","00010","00100","01000","11111"],
+    "3": ["11110","00001","00001","01110","00001","00001","11110"],
+    "4": ["00010","00110","01010","10010","11111","00010","00010"],
+    "5": ["11111","10000","11110","00001","00001","10001","01110"],
+    "6": ["00110","01000","10000","11110","10001","10001","01110"],
+    "7": ["11111","00001","00010","00100","01000","01000","01000"],
+    "8": ["01110","10001","10001","01110","10001","10001","01110"],
+    "9": ["01110","10001","10001","01111","00001","00010","01100"],
+    "-": ["00000","00000","00000","11111","00000","00000","00000"],
+    " ": ["00000","00000","00000","00000","00000","00000","00000"]
+  };
+  const COLORS = { HOT: "var(--hot-led)", WARM: "var(--warm-led)", COLD: "var(--cold-led)" };
+
+  /* ---------------- state ---------------- */
+  const $ = (id) => document.getElementById(id);
+  const NS = "http://www.w3.org/2000/svg";
+  let lang = (navigator.language || "en").toLowerCase().startsWith("es") ? "es" : "en";
+  let sid = newSid();
+  let busy = false;
+  let pollTimer = null;
+  const state = { steps: [], score: null, scoreStatus: "none", hasMessages: false };
+
+  function newSid() {
+    return (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+      : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12));
+  }
+  const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const t = () => T[lang];
+
+  /* ---------------- language ---------------- */
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t()[el.dataset.i18n]; });
+    document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = t()[el.dataset.i18nPh]; });
+    document.querySelectorAll("[data-i18n-aria]").forEach((el) => { el.setAttribute("aria-label", t()[el.dataset.i18nAria]); });
+    document.querySelectorAll("[data-lang]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+    if (!state.hasMessages) renderEmpty();
+    renderSteps();
+    renderScore(false);
+  }
+
+  /* ---------------- chat ---------------- */
+  function renderMd(text) {
+    const inline = (s) => s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    let html = "", inList = false;
+    for (const raw of esc(text).split("\n")) {
+      const li = raw.match(/^\s*[-*\u2022]\s+(.*)$/);
+      if (li) {
+        if (!inList) { html += "<ul>"; inList = true; }
+        html += "<li>" + inline(li[1]) + "</li>";
+      } else {
+        if (inList) { html += "</ul>"; inList = false; }
+        if (raw.trim()) html += "<p>" + inline(raw) + "</p>";
+      }
+    }
+    return html + (inList ? "</ul>" : "");
+  }
+
+  function scrollDown() { const log = $("log"); log.scrollTop = log.scrollHeight; }
+
+  function addMessage(kind, text) {
+    clearEmpty();
+    const div = document.createElement("div");
+    div.className = "msg " + kind;
+    if (kind === "bot") div.innerHTML = renderMd(text); else div.textContent = text;
+    $("log").appendChild(div);
+    scrollDown();
+  }
+
+  function showTyping() {
+    const div = document.createElement("div");
+    div.className = "msg bot typing"; div.id = "typing";
+    div.innerHTML = '<i></i><i></i><i></i><span class="sr">' + esc(t().typing) + "</span>";
+    $("log").appendChild(div);
+    scrollDown();
+  }
+  function hideTyping() { const el = $("typing"); if (el) el.remove(); }
+
+  function renderEmpty() {
+    const log = $("log");
+    log.innerHTML = "";
+    const box = document.createElement("div");
+    box.className = "empty"; box.id = "empty";
+    box.innerHTML = "<h2>" + esc(t().emptyTitle) + "</h2><p>" + esc(t().emptyText) + '</p><div class="chips"></div>';
+    t().chips.forEach((c) => {
+      const b = document.createElement("button");
+      b.type = "button"; b.className = "chip"; b.textContent = c;
+      b.addEventListener("click", () => send(c));
+      box.querySelector(".chips").appendChild(b);
+    });
+    log.appendChild(box);
+  }
+  function clearEmpty() { const e = $("empty"); if (e) e.remove(); state.hasMessages = true; }
+
+  function setBusy(v) { busy = v; $("sendBtn").disabled = v; }
+
+  async function send(text) {
+    text = (text || "").trim();
+    if (busy || !text) return;
+    const mySid = sid;
+    addMessage("user", text);
+    $("input").value = ""; autosize();
+    setBusy(true); showTyping();
+    try {
+      const r = await fetch("/api/chat", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: mySid, message: text })
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const d = await r.json();
+      if (mySid !== sid) return;                    // conversation was reset meanwhile
+      hideTyping();
+      addMessage("bot", d.reply);
+      if (d.trace && d.trace.length) { state.steps.push(...d.trace); renderSteps(); }
+      if (d.analysis_pending) { state.scoreStatus = "pending"; renderScore(false); pollScore(); }
+    } catch (e) {
+      hideTyping();
+      addMessage("err", t().netError);
+    } finally {
+      setBusy(false);
+      $("input").focus();
+    }
+  }
+
+  function autosize() {
+    const el = $("input");
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 140) + "px";
+  }
+
+  /* ---------------- LED matrix ---------------- */
+  const PITCH = 12;
+  function buildMatrix() {
+    const svg = $("matrix");
+    svg.innerHTML = "";
+    for (let slot = 0; slot < 3; slot++)
+      for (let row = 0; row < 7; row++)
+        for (let col = 0; col < 5; col++) {
+          const gx = slot * 6 + col;
+          const c = document.createElementNS(NS, "circle");
+          c.setAttribute("cx", gx * PITCH + PITCH / 2);
+          c.setAttribute("cy", row * PITCH + PITCH / 2);
+          c.setAttribute("r", 4.2);
+          c.setAttribute("class", "dot");
+          c.dataset.slot = slot; c.dataset.row = row; c.dataset.col = col; c.dataset.gx = gx;
+          c.style.setProperty("--c", gx);
+          svg.appendChild(c);
+        }
+  }
+
+  function paintMatrix(text, color, animate) {
+    const svg = $("matrix");
+    svg.style.setProperty("--led", color);
+    const chars = text.padStart(3, " ").split("");
+    svg.querySelectorAll(".dot").forEach((d) => {
+      const glyph = FONT[chars[+d.dataset.slot]] || FONT[" "];
+      d.style.transitionDelay = animate ? (+d.dataset.gx * 28) + "ms" : "0ms";
+      d.classList.toggle("on", glyph[+d.dataset.row][+d.dataset.col] === "1");
+    });
+  }
+  function clearMatrix() { $("matrix").querySelectorAll(".dot").forEach((d) => { d.style.transitionDelay = "0ms"; d.classList.remove("on"); }); }
+
+  /* ---------------- sales panel: score ---------------- */
+  function renderScore(animate) {
+    const svg = $("matrix"), body = $("scoreBody"), s = state.scoreStatus, r = state.score;
+    svg.classList.remove("scan", "lit");
+    if (s === "ready" && r) {
+      const color = COLORS[r.priority] || "var(--led-idle)";
+      svg.setAttribute("aria-label", r.score + " " + t().outOf);
+      if (animate) { clearMatrix(); requestAnimationFrame(() => requestAnimationFrame(() => paintMatrix(String(r.score), color, true))); }
+      else paintMatrix(String(r.score), color, false);
+      svg.classList.add("lit");
+
+      const bars = Object.entries(r.breakdown || {}).map(([k, v]) =>
+        '<li><span>' + esc(t().factors[k] || k) + '</span><span class="track"><span class="fill" style="width:' +
+        Math.max(0, Math.min(100, (v / 25) * 100)) + '%"></span></span><b>+' + esc(v) + "</b></li>").join("");
+      body.innerHTML =
+        '<div class="score-line"><span class="badge ' + esc(r.priority) + '">' + esc(t()[r.priority] || r.priority) + "</span><span>" +
+        esc(r.score) + " " + esc(t().outOf) + "</span></div>" +
+        (r.notified === "yes" ? '<p class="tag">' + esc(t().alerted) + "</p>" : "") +
+        (r.llm_ok === false ? '<p class="note warn block">' + esc(t().partial) + "</p>" : "") +
+        '<div class="block"><h3>' + esc(t().why) + "</h3><ul>" + (r.reasons || []).map((x) => "<li>" + esc(x) + "</li>").join("") + "</ul></div>" +
+        (r.next_action ? '<div class="block"><h3>' + esc(t().nextStep) + '</h3><p class="next">' + esc(r.next_action) + "</p></div>" : "") +
+        '<details class="block"><summary>' + esc(t().howBuilt) + '</summary><ul class="bars">' + bars + "</ul></details>";
+      return;
+    }
+    if (s === "pending") {
+      svg.setAttribute("aria-label", t().scorePending);
+      paintMatrix("   ", "var(--led-idle)", false);
+      svg.classList.add("scan");
+      body.innerHTML = '<p class="note">' + esc(t().scorePending) + "</p>";
+      return;
+    }
+    svg.setAttribute("aria-label", "-");
+    paintMatrix("---", "var(--led-idle)", false);
+    body.innerHTML = '<p class="note' + (s === "failed" ? " warn" : "") + '">' + esc(s === "failed" ? t().scoreFailed : t().scoreNone) + "</p>";
+  }
+
+  function pollScore() {
+    clearTimeout(pollTimer);
+    const mySid = sid, started = Date.now();
+    const tick = async () => {
+      if (mySid !== sid) return;
+      let again = false;
+      try {
+        const r = await fetch("/api/score/" + encodeURIComponent(mySid));
+        const d = await r.json();
+        if (mySid !== sid) return;
+        if (d.status === "pending") again = true;
+        else { state.scoreStatus = d.status; state.score = d.result || null; renderScore(true); return; }
+      } catch (e) { again = true; }
+      if (again && Date.now() - started < 120000) pollTimer = setTimeout(tick, 2000);
+      else if (again) { state.scoreStatus = "failed"; renderScore(false); }
+    };
+    tick();
+  }
+
+  /* ---------------- sales panel: activity ---------------- */
+  function describeStep(s) {
+    const x = t(), a = s.args || {}, r = (s.result && typeof s.result === "object") ? s.result : null;
+    const err = r && r.error ? String(r.error) : "";
+    let title = s.tool, detail = "";
+    if (s.tool === "evaluate_request") {
+      title = x.stEval;
+      detail = (r && r.status === "needs_clarification") ? x.clarify : (x.intents[a.intent] || "");
+    } else if (s.tool === "handle_purchase_request") {
+      title = ({ schedule_call: x.stCall, showroom_visit: x.stVisit, send_quotation: x.stBuyQuote })[a.action] || x.stPurchase;
+    } else if (s.tool === "handle_rental_request") {
+      title = x.stRent;
+    }
+    if (r && !err) {
+      if (r.total != null) detail = Number(r.total).toLocaleString(lang === "es" ? "es-MX" : "en-US", { minimumFractionDigits: 2 }) + " " + (r.currency || "");
+      else if (r.when) detail = String(r.when).replace("T", " ").slice(0, 16);
+    }
+    return { title: err ? title + " - " + x.needsInfo : title, detail, error: err };
+  }
+
+  function renderSteps() {
+    const box = $("steps");
+    if (!state.steps.length) { box.innerHTML = '<p class="note" style="margin-top:12px">' + esc(t().activityEmpty) + "</p>"; return; }
+    const ol = document.createElement("ol");
+    ol.className = "timeline";
+    state.steps.forEach((s) => {
+      const d = describeStep(s), li = document.createElement("li");
+      li.innerHTML = '<span class="mark' + (d.error ? " warn" : "") + '" aria-hidden="true"></span>' +
+        '<p class="st-title">' + esc(d.title) + "</p>" +
+        (d.detail ? '<p class="st-detail">' + esc(d.detail) + "</p>" : "") +
+        (d.error ? '<p class="st-detail warn">' + esc(d.error) + "</p>" : "") +
+        "<details><summary>" + esc(t().details) + "</summary><pre>" + esc(JSON.stringify({ args: s.args, result: s.result }, null, 2)) + "</pre></details>";
+      ol.appendChild(li);
+    });
+    box.innerHTML = ""; box.appendChild(ol);
+  }
+
+  /* ---------------- events ---------------- */
+  $("composer").addEventListener("submit", (e) => { e.preventDefault(); send($("input").value); });
+  $("input").addEventListener("input", autosize);
+  $("input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($("input").value); }
+  });
+  document.querySelectorAll("[data-lang]").forEach((b) => b.addEventListener("click", () => { lang = b.dataset.lang; applyLang(); }));
+  document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => {
+    $("app").dataset.view = b.dataset.view;
+    document.querySelectorAll(".tabs button").forEach((x) => x.setAttribute("aria-selected", String(x === b)));
+  }));
+  $("newChat").addEventListener("click", () => {
+    const old = sid;
+    fetch("/api/reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: old }) }).catch(() => {});
+    clearTimeout(pollTimer);
+    sid = newSid(); busy = false; $("sendBtn").disabled = false;
+    state.steps = []; state.score = null; state.scoreStatus = "none"; state.hasMessages = false;
+    renderEmpty(); renderSteps(); renderScore(false);
+    $("input").focus();
+  });
+
+  buildMatrix();
+  applyLang();
+})();
+</script>
+</body>
+</html>
