@@ -84,6 +84,30 @@ PRICING_DEFAULTS = {
 }
 
 
+# Support-team contact shown to customers whose request is not supported (repairs, etc.).
+# PLACEHOLDERS: replace them with your real data in pricing.xlsx > Settings.
+AJUSTES_SOPORTE = [
+    ["support_phone", "+52 55 0000 0000"],
+    ["support_email", "soporte@example.com"],
+    ["support_hours", "Lunes a viernes, 9:00 a 18:00"],
+]
+
+
+def _completar_ajustes() -> None:
+    """Add any missing support-contact rows to an existing Settings sheet (never overwrites)."""
+    try:
+        wb = load_workbook(PRICING_FILE)
+        ws = wb["Settings"]
+        existentes = {c.value for c in ws["A"] if c.value}
+        faltan = [r for r in AJUSTES_SOPORTE if r[0] not in existentes]
+        if faltan:
+            for r in faltan:
+                ws.append(r)
+            wb.save(PRICING_FILE)
+    except Exception:
+        pass  # never block the tools because of this convenience
+
+
 def ensure_files() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not LEADS_FILE.exists():
@@ -101,6 +125,7 @@ def ensure_files() -> None:
             for r in rows:
                 ws.append(r)
         wb.save(PRICING_FILE)
+    _completar_ajustes()
 
 
 def _rows(wb, sheet: str) -> list[dict]:
@@ -229,6 +254,15 @@ def _deliver_quote(lead, quote_id, qtype, details, subtotal, tax, total, currenc
         return "email_failed"
 
 
+def _contacto_soporte() -> dict:
+    """Support-team contact, read from pricing.xlsx > Settings."""
+    try:
+        ajustes = _settings()
+    except Exception:
+        ajustes = {}
+    return {k: str(ajustes.get(f"support_{k}") or "").strip() for k in ("phone", "email", "hours")}
+
+
 # ---------------------------------------------------------------------------
 # TOOL 1: EVALUATE REQUEST
 # ---------------------------------------------------------------------------
@@ -262,9 +296,17 @@ def evaluate_request(intent: Literal["buy", "rent", "other"], confidence: float,
     wb.save(LEADS_FILE)
 
     if stored == "unsupported":
+        soporte = _contacto_soporte()
+        if soporte["phone"] or soporte["email"]:
+            siguiente = ("Politely explain that this chat only handles buying or renting LED screens. "
+                         "For anything else (repairs, technical support, other services) give the customer "
+                         "the support team contact in 'support_contact', exactly as written, and invite "
+                         "them to call or write. Do NOT invent prices, repair times or any other contact data.")
+        else:
+            siguiente = ("Politely explain that this chat only handles buying or renting LED screens. "
+                         "No support contact is configured, so do NOT invent one.")
         return {"status": "unsupported", "lead_id": lead_id,
-                "next_step": "Politely explain you can only help with buying or renting "
-                             "LED screens, and offer a human contact for anything else."}
+                "support_contact": soporte, "next_step": siguiente}
     if stored == "buy":
         return {"status": "supported", "intent": "buy", "lead_id": lead_id,
                 "next_step": "Ask whether they prefer: (a) a call, (b) a showroom visit, "

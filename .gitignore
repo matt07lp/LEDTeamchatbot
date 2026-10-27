@@ -19,3 +19,11 @@ venv/
 .vscode/
 .idea/
 .ipynb_checkpoints/
+
+#Datos de evaluacion
+evaluacion_agente_20261026_1800.pdf
+evaluacion_agente_20261026_1756.pdf
+evaluacion_agente_20261026_1800.json
+evaluacion_agente_20261026_1756.json
+evaluacion_agente_20261026_2152.pdf
+evaluacion_agente_20261026_2152.json
